@@ -7,7 +7,7 @@ def load_pdf_text(path):
     return "\n".join(pages)
 
 
-def chunk_text(text, size=500, overlap=50):
+def chunk_text(text, size=500, overlap=100):
     chunks = []
     start = 0
     while start < len(text):

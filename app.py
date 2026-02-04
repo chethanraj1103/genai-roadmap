@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import shutil
 from groq import Groq
 
-from rag import retrieve, build_index, load_index
+from rag import retrieve_with_sources, build_index, load_index
 
 load_dotenv()
 
@@ -17,7 +18,7 @@ client = Groq(api_key=api_key)
 
 app = FastAPI()
 
-# Load persisted index on startup
+# load persisted index on startup
 load_index()
 
 
@@ -25,17 +26,9 @@ class ChatRequest(BaseModel):
     message: str
 
 
-@app.post("/chat")
-def chat(req: ChatRequest):
-    try:
-        resp = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": req.message}],
-            temperature=0.2,
-        )
-        return {"reply": resp.choices[0].message.content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return open("ui.html", "r", encoding="utf-8").read()
 
 
 @app.post("/upload")
@@ -55,20 +48,29 @@ def upload(file: UploadFile = File(...)):
 @app.post("/rag")
 def rag(req: ChatRequest):
     try:
-        context_docs = retrieve(req.message)
-        prompt = f"""You are an AI assistant for BFSI fraud & risk.
-Answer ONLY using the context below.
+        sources = retrieve_with_sources(req.message)
+
+        context_text = "\n\n".join(
+            [f"[Source {s['id']}] {s['text']}" for s in sources])
+
+        prompt = f"""You are an AI assistant.
+Answer ONLY using the context below and cite sources like [Source 1], [Source 2].
 
 Context:
-{context_docs}
+{context_text}
 
 Question: {req.message}
 """
+
         resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )
-        return {"context": context_docs, "reply": resp.choices[0].message.content}
+
+        return {
+            "answer": resp.choices[0].message.content,
+            "sources": sources
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
