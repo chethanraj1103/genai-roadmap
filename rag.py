@@ -1,58 +1,54 @@
 import os
 import faiss
-import numpy as np
 import pickle
 from sentence_transformers import SentenceTransformer
-from loader import load_pdf_text, chunk_text
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
+MODEL_NAME = "all-MiniLM-L6-v2"
 INDEX_PATH = "data/faiss.index"
-DOCS_PATH = "data/docs.pkl"
-
-index = None
-docs = []
+META_PATH = "data/meta.pkl"
 
 
-def build_index(pdf_path: str):
-    global index, docs
+def get_model():
+    try:
+        return SentenceTransformer(MODEL_NAME)
+    except Exception as e:
+        print("HF model load failed:", e)
+        raise RuntimeError(
+            "Model download failed. Check HF_TOKEN or internet access.")
 
-    text = load_pdf_text(pdf_path)
-    chunks = chunk_text(text, size=500, overlap=100)
-    docs = chunks
 
-    embeddings = model.encode(docs, show_progress_bar=True)
-    embeddings = np.array(embeddings).astype("float32")
+model = get_model()
 
-    index = faiss.IndexFlatL2(embeddings.shape[1])
-    index.add(embeddings)
 
+def build_index(chunks):
+    vectors = model.encode([c["text"] for c in chunks])
+    dim = vectors.shape[1]
+
+    index = faiss.IndexFlatL2(dim)
+    index.add(vectors)
+
+    os.makedirs("data", exist_ok=True)
     faiss.write_index(index, INDEX_PATH)
-    with open(DOCS_PATH, "wb") as f:
-        pickle.dump(docs, f)
 
-    return len(docs)
+    with open(META_PATH, "wb") as f:
+        pickle.dump(chunks, f)
 
 
 def load_index():
-    global index, docs
-    if os.path.exists(INDEX_PATH) and os.path.exists(DOCS_PATH):
-        index = faiss.read_index(INDEX_PATH)
-        with open(DOCS_PATH, "rb") as f:
-            docs = pickle.load(f)
+    index = faiss.read_index(INDEX_PATH)
+    with open(META_PATH, "rb") as f:
+        chunks = pickle.load(f)
+    return index, chunks
 
 
-def retrieve(query: str, k: int = 3):
-    if index is None:
-        load_index()
-        if index is None:
-            raise RuntimeError("Index not built. Upload a PDF first.")
+def retrieve_with_sources(query, k=3):
+    index, chunks = load_index()
+    q_vec = model.encode([query])
 
-    q_emb = model.encode([query]).astype("float32")
-    distances, indices = index.search(q_emb, k)
-
+    D, I = index.search(q_vec, k)
     results = []
-    for i in indices[0]:
-        if i >= 0 and i < len(docs):
-            results.append(docs[i])
+
+    for idx in I[0]:
+        results.append(chunks[idx])
+
     return results
