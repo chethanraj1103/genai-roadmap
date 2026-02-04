@@ -17,26 +17,18 @@ _chunks = None
 def get_model():
     global _model
     if _model is None:
-        try:
-            _model = SentenceTransformer(MODEL_NAME)
-        except Exception as e:
-            raise RuntimeError(
-                f"HF model load failed. Check HF_TOKEN or internet. Error: {e}"
-            )
+        _model = SentenceTransformer(MODEL_NAME)
     return _model
 
 
 def build_index_from_pdf(pdf_path: str):
-    """
-    Load PDF → chunk → embed → build FAISS index → persist to disk
-    """
     global _index, _chunks
 
     text = load_pdf_text(pdf_path)
     chunks = chunk_text(text, size=500, overlap=100)
 
     model = get_model()
-    vectors = model.encode([c["text"] for c in chunks], show_progress_bar=True)
+    vectors = model.encode(chunks, show_progress_bar=True)
     vectors = np.array(vectors).astype("float32")
 
     dim = vectors.shape[1]
@@ -71,9 +63,6 @@ def load_index():
 
 
 def retrieve_with_sources(query: str, k: int = 3):
-    """
-    Query FAISS → return top-k chunks with text + metadata
-    """
     index, chunks = load_index()
     if index is None:
         raise RuntimeError("Index not built yet. Upload a PDF first.")
