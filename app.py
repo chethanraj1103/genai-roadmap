@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -29,7 +30,8 @@ class ChatRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return open("ui.html", "r", encoding="utf-8").read()
+    ui_path = Path(__file__).parent / "ui.html"
+    return ui_path.read_text(encoding="utf-8")
 
 
 @app.post("/upload")
