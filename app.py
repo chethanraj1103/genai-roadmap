@@ -30,7 +30,12 @@ class ChatRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    ui_path = Path(__file__).parent / "ui.html"
+    ui_path = Path(__file__).resolve().parent / "ui.html"
+    if not ui_path.exists():
+        return HTMLResponse(
+            content="<h2>UI not found. Please deploy UI files.</h2>",
+            status_code=500,
+        )
     return ui_path.read_text(encoding="utf-8")
 
 
